@@ -3,8 +3,11 @@
 # Original Python code by Ignacio Cases (@cases)
 ######################################################################
 import util
-
+import re
 import numpy as np
+import collections
+from porter_stemmer import PorterStemmer
+
 
 
 # noinspection PyMethodMayBeStatic
@@ -14,7 +17,7 @@ class Chatbot:
     def __init__(self, creative=False):
         # The chatbot's default name is `moviebot`.
         # TODO: Give your chatbot a new name.
-        self.name = 'moviebot'
+        self.name = 'chris'
 
         self.creative = creative
 
@@ -22,14 +25,41 @@ class Chatbot:
         # The values stored in each row i and column j is the rating for
         # movie i by user j
         self.titles, ratings = util.load_ratings('data/ratings.txt')
+        # put self.titles in a better format
+        def refineTitles(titleList):
+            #print("preprocessing title data...")
+            titles = collections.defaultdict(list)
+            pattern = "((?:[\w\.'é:\+\-\&/!?ó*\[\]]+\s?)+)(?:\s|,\s(.+)\s)?(?:\((.+)\)\s)?(?:\((\d\d\d\d)-?(?:\d\d\d\d)?\))"
+            for i in range(len(titleList)):
+                titlefromlist, genre = titleList[i]
+                #print("{}: {}".format(i, titlefromlist))
+                res = re.findall(pattern, titlefromlist)
+                if len(res) > 0:
+                    title, article, altTitle, year = re.findall(pattern, titlefromlist)[0]
+                    title = title.replace(" ", "").lower()
+                    titles[title].append([i, year, genre, article, altTitle])
+                else:
+                    titles[titlefromlist].append([i, None, genre, None, None])
+            #print("done processing data...")
+            return titles
+        def refineSentiment(sentiment):
+            newSentiment = collections.defaultdict(int)
+            def stem(x):
+                stemmer = PorterStemmer()
+                return stemmer.stem(x, 0, len(x) - 1)
+            for key, value in sentiment.items():
+                newSentiment[stem(key)] = 1 if value == "pos" else -1
+            return newSentiment
+        self.titleDict = refineTitles(self.titles)
         self.sentiment = util.load_sentiment_dictionary('data/sentiment.txt')
+        self.newsentiment = refineSentiment(self.sentiment)
 
         ########################################################################
         # TODO: Binarize the movie ratings matrix.                             #
         ########################################################################
 
         # Binarize the movie ratings before storing the binarized matrix.
-        self.ratings = ratings
+        self.ratings = self.binarize(ratings)
         ########################################################################
         #                             END OF YOUR CODE                         #
         ########################################################################
@@ -125,15 +155,25 @@ class Chatbot:
         """
         ########################################################################
         # TODO: Preprocess the text into a desired format.                     #
-        # NOTE: This method is completely OPTIONAL. If it is not helpful to    #
-        # your implementation to do any generic preprocessing, feel free to    #
-        # leave this method unmodified.                                        #
+        # NOTE: it's just the text returned.                                   #
         ########################################################################
 
         ########################################################################
         #                             END OF YOUR CODE                         #
         ########################################################################
-
+        # space_separated = text.split(' ')
+        # arr = []
+        # token = ""
+        # for word in space_separated:
+        #     if token != "":
+        #         token += " " + word
+        #         if word[-1] == '\"':
+        #             arr.append(token)
+        #             token = ""
+        #     elif word[0] == '\"':
+        #         token += word
+        #     else:
+        #         arr.append(word)
         return text
 
     def extract_titles(self, preprocessed_input):
@@ -158,7 +198,12 @@ class Chatbot:
         pre-processed with preprocess()
         :returns: list of movie titles that are potentially in the text
         """
-        return []
+        pattern = "\"([\w\.'é:\-\&/!?ó*\[\]\(\) ]+)\""
+        
+        
+        return re.findall(pattern, preprocessed_input)
+
+        
 
     def find_movies_by_title(self, title):
         """ Given a movie title, return a list of indices of matching movies.
@@ -178,7 +223,25 @@ class Chatbot:
         :param title: a string containing a movie title
         :returns: a list of indices of matching movies
         """
-        return []
+        matches = []
+        pattern = "(?:(?:([Aa]|[Tt]he|[Aa]n)) )?((?:(?:[\w.'é:\-\&/!?ó]+) ?)+)(?:\((\d\d\d\d)\))?"
+        #print("xyz title: {}".format(title))
+        article, u_title, year = re.findall(pattern, title)[0]
+        u_title = u_title.replace(" ", "").lower()
+        #print("xyz u_title: {}".format(u_title))
+        results = self.titleDict[u_title]
+        
+        #print("xyz res: {}".format(results))
+        for i_index, i_year, i_genre, i_article, i_altTitle in results:
+            #print(year)
+            #print(year == "")
+            if year == "":
+                matches.append(i_index)
+            elif year == i_year:
+                matches.append(i_index)
+
+
+        return matches
 
     def extract_sentiment(self, preprocessed_input):
         """Extract a sentiment rating from a line of pre-processed text.
@@ -200,7 +263,32 @@ class Chatbot:
         pre-processed with preprocess()
         :returns: a numerical value for the sentiment of the text
         """
-        return 0
+        def stem(x, islist = False):
+            stemmer = PorterStemmer()
+            if islist:
+                return [stem(y) for y in x ]
+            return stemmer.stem(x, 0, len(x) - 1)
+        flipWords = stem(["not","didn't", "never"], True)
+        fillerWords = stem(["really","absolutely", "undoubtedbly", "honestly"], True)
+        titlepattern = "\"([\w\.'é:\-\&/!?ó*\[\]\(\) ]+)\""
+        wordspattern = "((?:[A-Za-z])[\w']+)"
+        flip = 1
+
+        # replace titles with X so it doesnt interfere with sentiment   
+        preprocessed_input = re.sub(titlepattern, 'X', preprocessed_input)
+        words = re.findall(wordspattern, preprocessed_input)
+        # we want to check if the last word is a flip, so start with the first word outside the loop
+        total = 0 if stem(words[0]) not in self.newsentiment else self.newsentiment[stem(words[0])] # start with first word
+
+        for i in range(1, len(words)):
+            currWord = stem(words[i])
+            prevWord = stem(words[i - 1])
+            # flip the sentiment if a flip word comes before it
+            flip = -1 if prevWord in flipWords else flip if prevWord in fillerWords else 1
+            if currWord in self.newsentiment:
+                total +=  flip * self.newsentiment[currWord]
+
+        return total/max(1,abs(total))
 
     def extract_sentiment_for_movies(self, preprocessed_input):
         """Creative Feature: Extracts the sentiments from a line of
@@ -224,6 +312,9 @@ class Chatbot:
         title, and the second is the sentiment in the text toward that movie
         """
         pass
+
+
+
 
     def find_movies_closest_to_title(self, title, max_distance=3):
         """Creative Feature: Given a potentially misspelled movie title,
@@ -307,7 +398,11 @@ class Chatbot:
 
         # The starter code returns a new matrix shaped like ratings but full of
         # zeros.
-        binarized_ratings = np.zeros_like(ratings)
+        binstep = np.where(ratings == 0, 100, ratings)
+        binstep = np.where(binstep <= threshold, -1, binstep)
+        binstep = np.where(binstep == 100, 0, binstep)
+        binstep = np.where(binstep > threshold, 1, binstep)
+        binarized_ratings = binstep
 
         ########################################################################
         #                        END OF YOUR CODE                              #
@@ -327,7 +422,14 @@ class Chatbot:
         ########################################################################
         # TODO: Compute cosine similarity between the two vectors.             #
         ########################################################################
-        similarity = 0
+        u_rated = np.nonzero(u)[0]
+        v_rated = np.nonzero(v)[0]
+        same = np.intersect1d(u_rated, v_rated)
+        u = u[same]
+        v = v[same]
+        if len(u) < 1 or len(v) < 1:
+            return 0
+        similarity = np.dot(u, v)/(np.linalg.norm(u)* np.linalg.norm(v))
         ########################################################################
         #                          END OF YOUR CODE                            #
         ########################################################################
@@ -370,12 +472,21 @@ class Chatbot:
         ########################################################################
 
         # Populate this list with k movie indices to recommend to the user.
-        recommendations = []
-
+        userRatedIndices = np.nonzero(user_ratings)[0]
+        movieRatings = np.zeros(ratings_matrix.shape[0])
+        for i in range(len(movieRatings)):
+            if i in userRatedIndices: continue
+            
+            for userRatedIndex in userRatedIndices:
+                movieRatings[i] += self.similarity(ratings_matrix[userRatedIndex], ratings_matrix[i]) * user_ratings[userRatedIndex]
+        
+        top = np.argsort(movieRatings)
+        recommendations = top[:k]
+        
         ########################################################################
         #                        END OF YOUR CODE                              #
         ########################################################################
-        return recommendations
+        return list(recommendations)
 
     ############################################################################
     # 4. Debug info                                                            #
