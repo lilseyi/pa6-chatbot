@@ -453,7 +453,7 @@ class Chatbot:
                 elif dist == min_distance:
                     potential_titles.append(i)
         return potential_titles
-
+    
     def disambiguate(self, clarification, candidates):
         """Creative Feature: Given a list of movies that the user could be
         talking about (represented as indices), and a string given by the user
@@ -477,7 +477,26 @@ class Chatbot:
         :returns: a list of indices corresponding to the movies identified by
         the clarification
         """
-        return []
+        # Iterate through the options and see which movie(s) are best
+        options = []
+        if clarification == 'most recent': return [candidates[0]]
+        if "first one" in clarification: return [candidates[0]]
+        if "second one" in clarification: return [candidates[1]]
+        if "third one" in clarification: return [candidates[2]]
+        if "fourth one" in clarification: return [candidates[3]]
+        
+        for movie_idx in candidates:
+            title, genre = self.titles[movie_idx]
+            pattern = "((?:[\w\.'é:\+\-\&/!?ó*\[\]]+\s?)+)(?:\s|,\s(.+)\s)?(?:\((.+)\)\s)?(?:\((\d\d\d\d)-?(?:\d\d\d\d)?\))"
+            res = re.findall(pattern, title)
+            if len(res) > 0:
+                title, article, altTitle, year = re.findall(pattern, title)[0]
+                print(movie_idx, clarification, title, article, altTitle, year)
+                # Check if the clarification is in the artle ex
+                if clarification in title or clarification in article or clarification in altTitle or clarification == year:
+                    options.append(movie_idx)
+        print("Results,", options)
+        return options
 
     ############################################################################
     # 3. Movie Recommendation helper functions                                 #
@@ -558,7 +577,7 @@ class Chatbot:
         :param user_ratings: a binarized 1D numpy array of the user's movie
             ratings
         :param ratings_matrix: a binarized 2D numpy matrix of all ratings, where
-          `ratings_matrix[i, j]` is the rating for movie i by user j
+          `ratings_matrix[i, j]` is the ratin g for movie i by user j
         :param k: the number of recommendations to generate
         :param creative: whether the chatbot is in creative mode
 
