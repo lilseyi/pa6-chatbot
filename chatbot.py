@@ -15,33 +15,71 @@ class Chatbot:
     """Simple class to implement the chatbot for PA 6."""
 
     def __init__(self, creative=False):
-        # The chatbot's default name is `moviebot`.
-        # TODO: Give your chatbot a new name.
-        self.name = 'chris'
-
+        self.name = 'Chris'
         self.creative = creative
-
+        
         # This matrix has the following shape: num_movies x num_users
         # The values stored in each row i and column j is the rating for
         # movie i by user j
         self.titles, ratings = util.load_ratings('data/ratings.txt')
-        # put self.titles in a better format
+        
+        # Dictionary Mapping Alternate Titles to movie index
+        self.alternate_titles = {}
+        
+        # Creative Disambiguation (part 1) Dictionary Mapping Each title token to movie index
+        self.disamb_title = {}
+        
+        # Creative Find movies cloest to title. Our preprocess method of lowering and remove spaces might be causing it to fail :<
+        self.titles_name = []
+        
+        # Put self.titles in a better format
+        # Creative (Alternate/foreign titles) Finds the alternate titles and adjusts for article in the alternate titles, (Alternate Title is in parentheses)
         def refineTitles(titleList):
-            #print("preprocessing title data...")
             titles = collections.defaultdict(list)
             pattern = "((?:[\w\.'é:\+\-\&/!?ó*\[\]]+\s?)+)(?:\s|,\s(.+)\s)?(?:\((.+)\)\s)?(?:\((\d\d\d\d)-?(?:\d\d\d\d)?\))"
             for i in range(len(titleList)):
                 titlefromlist, genre = titleList[i]
-                #print("{}: {}".format(i, titlefromlist))
                 res = re.findall(pattern, titlefromlist)
                 if len(res) > 0:
                     title, article, altTitle, year = re.findall(pattern, titlefromlist)[0]
+                    # Creative Disambiguation: index tokens of movie title to movie index
+                    # If there is an alt title, stores the alt title as key and movie index as value
+                    title_tokens = title.split()
+                    
+                    # Creative: find the closest movie to title, creating a list of titles that are lower but don't have spaces removed
+                    self.titles_name.append(title.lower())
+                    
+                    for token in title_tokens:
+                        # Cleans the movie string tokens (i.e jackson: jackson)
+                        processed_token = token.lower().replace(":","").replace(",","").replace(".","")
+                        if processed_token in self.disamb_title:
+                            curr_movies = self.disamb_title[processed_token]
+                            curr_movies.append(i)
+                            self.disamb_title[processed_token] = curr_movies
+                        else:
+                            self.disamb_title[processed_token] = [i]
                     title = title.replace(" ", "").lower()
                     titles[title].append([i, year, genre, article, altTitle])
+                    
+                    match = None
+                    # Checks if alternative title exsits
+                    # Creative adds article for alternate titles
+                    if len(altTitle) != 0:
+                        try:
+                            # Pattern to detect potenial articles such as Guerre du feu, La and replace them to be LaGuerre du feu to index them in the alternative titles dictionary which maps to movie index
+                            alt_pattern = "((?:[\w\.'ôûé:\+\-\&!?ó*\[\]]+\s?)+)(?:, )?(\w+)?"        
+                            match = re.findall(alt_pattern, altTitle)
+                            first = re.findall(alt_pattern, altTitle)[0][0]
+                            second = re.findall(alt_pattern, altTitle)[0][1]
+                            altTitle = second + first
+                            clean_alt_title  = altTitle.replace('a.k.a. ', "").lower().replace(" ", "")
+                        except:
+                            print("error", altTitle, match)
+                        self.alternate_titles[clean_alt_title] = i
                 else:
                     titles[titlefromlist].append([i, None, genre, None, None])
-            #print("done processing data...")
             return titles
+        
         def refineSentiment(sentiment):
             newSentiment = collections.defaultdict(int)
             def stem(x):
@@ -50,6 +88,7 @@ class Chatbot:
             for key, value in sentiment.items():
                 newSentiment[stem(key)] = 1 if value == "pos" else -1
             return newSentiment
+        
         self.titleDict = refineTitles(self.titles)
         self.sentiment = util.load_sentiment_dictionary('data/sentiment.txt')
         self.newsentiment = refineSentiment(self.sentiment)
@@ -74,7 +113,7 @@ class Chatbot:
         # TODO: Write a short greeting message                                 #
         ########################################################################
 
-        greeting_message = "How can I help you?"
+        greeting_message = "Hey, I'm Chris! I'm going to recommend a movie to you, but first, I will ask you about your taste in movies. Tell me about a movie that you've seen!"
 
         ########################################################################
         #                             END OF YOUR CODE                         #
@@ -127,10 +166,37 @@ class Chatbot:
         # code in a modular fashion to make it easier to improve and debug.    #
         ########################################################################
         if self.creative:
-            response = "I processed {} in creative mode!!".format(line)
+            preprocessed_line = self.preprocess(line)
+            potential_movies = self.extract_titles(preprocessed_line)
+            if len(potential_movies) == 0: return "Sorry, I don't understand. Tell me about a movie that you have seen." 
+            
+            # If the bot didn't find any movies ask again
+            movie_ids = self.find_movies_by_title(potential_movies[0])
+            movie_options = []
+            
+            # Get the movie titles 
+            for movie_id in movie_ids:
+                movie_options.append(self.titles[movie_id][0])
+            if len(movie_options) == 0: return "Sorry, I couldn't find that movie. Tell me about a movie that you have seen."     
+            
+            # TODO : Handle Multiple Movie Options
+            response = "You said {}. Thank you! Tell me about another movie you have seen.".format(movie_options[0])
         else:
-            response = "I processed {} in starter mode!!".format(line)
-
+            preprocessed_line = self.preprocess(line)
+            potential_movies = self.extract_titles(preprocessed_line)
+            if len(potential_movies) == 0: return "Sorry, I don't understand. Tell me about a movie that you have seen." 
+            
+            # If the bot didn't find any movies ask again
+            movie_ids = self.find_movies_by_title(potential_movies[0])
+            movie_options = []
+            
+            # Get the movie titles 
+            for movie_id in movie_ids:
+                movie_options.append(self.titles[movie_id][0])
+            if len(movie_options) == 0: return "Sorry, I couldn't find that movie. Tell me about a movie that you have seen."     
+            
+            # TODO : Handle Multiple Movie Options
+            response = "You said {}. Thank you! Tell me about another movie you have seen.".format(movie_options[0])
         ########################################################################
         #                          END OF YOUR CODE                            #
         ########################################################################
@@ -198,13 +264,12 @@ class Chatbot:
         pre-processed with preprocess()
         :returns: list of movie titles that are potentially in the text
         """
-        pattern = "\"([\w\.'é:\-\&/!?ó*\[\]\(\) ]+)\""
+        # Added[, \] to adjust for haine, la
+        pattern = "\"([\w\.'é:\-\&/!?ó*\[\]\(\)\[, \]]+)\""
+        movie_options =  re.findall(pattern, preprocessed_input)
         
-        
-        return re.findall(pattern, preprocessed_input)
-
-        
-
+        return movie_options
+    
     def find_movies_by_title(self, title):
         """ Given a movie title, return a list of indices of matching movies.
 
@@ -224,23 +289,45 @@ class Chatbot:
         :returns: a list of indices of matching movies
         """
         matches = []
-        pattern = "(?:(?:([Aa]|[Tt]he|[Aa]n)) )?((?:(?:[\w.'é:\-\&/!?ó]+) ?)+)(?:\((\d\d\d\d)\))?"
-        #print("xyz title: {}".format(title))
+        pattern = "(?:(?:([Aa]|[Tt]he|[Aa]n)) )?((?:(?:[\w.'é:\[, \]\-\&/!?ó]+) ?)+)(?:\((\d\d\d\d)\))?"
         article, u_title, year = re.findall(pattern, title)[0]
+        # Preprocess the identified title
         u_title = u_title.replace(" ", "").lower()
-        #print("xyz u_title: {}".format(u_title))
         results = self.titleDict[u_title]
-        
-        #print("xyz res: {}".format(results))
+        # Check for matching year
         for i_index, i_year, i_genre, i_article, i_altTitle in results:
-            #print(year)
-            #print(year == "")
             if year == "":
                 matches.append(i_index)
             elif year == i_year:
                 matches.append(i_index)
-
-
+        # Creative : Check if they used an alternative name
+        # EDGE CASE: What if results aren't empty but they used a alt name?
+        if len(results) == 0:
+            try:
+                movie_index = self.alternate_titles[u_title]
+                matches.append(movie_index)
+            except:
+                pass
+        
+        # Creative Disambiguation (Part 1) Returns all movies containing the tokens in title
+        if self.creative:
+            for token_index, token in enumerate(title.split()):
+                preprocessed_token = token.lower()
+                try:
+                    #Check the intersection of the keywords if there are multiple words
+                    # Lazy coding...  but if the code got something from the previous code it should add
+                    if token_index == 0:
+                        matches += self.disamb_title.get(preprocessed_token)
+                    else:
+                        token_movies = self.disamb_title.get(preprocessed_token)
+                        common_movies = set(matches).intersection(set(token_movies))
+                        matches = list(common_movies)
+                except:
+                    pass
+                
+        # Removes duplicates
+        matches = list(set(matches))
+        print(matches)
         return matches
 
     def extract_sentiment(self, preprocessed_input):
@@ -311,10 +398,7 @@ class Chatbot:
         :returns: a list of tuples, where the first item in the tuple is a movie
         title, and the second is the sentiment in the text toward that movie
         """
-        pass
-
-
-
+        return []
 
     def find_movies_closest_to_title(self, title, max_distance=3):
         """Creative Feature: Given a potentially misspelled movie title,
@@ -339,8 +423,40 @@ class Chatbot:
         :returns: a list of movie indices with titles closest to the given title
         and within edit distance max_distance
         """
-
-        pass
+        # Calculates the min edit distance betweens two strings and 
+        def calc_min_edit_dist(s1, s2):
+            memo_array = np.zeros((len(movie_title) + 1,len(preproccessed_title) + 1))
+            # Initialization
+            memo_array[:,0] = np.array(range(len(s1) + 1))          
+            memo_array[0,:] = np.array(range(len(s2) + 1))     
+            for i in range(1, len(s1) + 1):
+                for j in range(1, len(s2) + 1):
+                    add = memo_array[i - 1, j] + 1
+                    delete = memo_array[i, j - 1] + 1
+                    cost = 2
+                    if s1[i - 1] == s2[j - 1]:
+                        cost = 0
+                    sub = memo_array[i - 1, j - 1] + cost
+                    memo_array[i, j] = min([add, delete, sub])
+            return memo_array[len(s1), len(s2)]
+        
+        potential_titles = []
+        preproccessed_title = title.lower()
+        min_distance = 10000000000000000000
+        movie_options = self.titleDict.keys()
+        for i in range(len(self.titles)):
+            movie_title = self.titles[i][0].lower().split(' (')[0] 
+            split_title = movie_title.split(', ')
+            if len(split_title) > 1:
+                movie_title = split_title[1] + ' ' + split_title[0]
+            dist = calc_min_edit_dist(movie_title, preproccessed_title)
+            if dist <= max_distance:
+                if dist < min_distance:
+                    potential_titles = [i]
+                    min_distance = dist
+                elif dist == min_distance:
+                    potential_titles.append(i)
+        return potential_titles
 
     def disambiguate(self, clarification, candidates):
         """Creative Feature: Given a list of movies that the user could be
@@ -365,7 +481,7 @@ class Chatbot:
         :returns: a list of indices corresponding to the movies identified by
         the clarification
         """
-        pass
+        return []
 
     ############################################################################
     # 3. Movie Recommendation helper functions                                 #
@@ -422,14 +538,10 @@ class Chatbot:
         ########################################################################
         # TODO: Compute cosine similarity between the two vectors.             #
         ########################################################################
-        u_rated = np.nonzero(u)[0]
-        v_rated = np.nonzero(v)[0]
-        same = np.intersect1d(u_rated, v_rated)
-        u = u[same]
-        v = v[same]
-        if len(u) < 1 or len(v) < 1:
+        denom = (np.linalg.norm(u)* np.linalg.norm(v))
+        if denom == 0:
             return 0
-        similarity = np.dot(u, v)/(np.linalg.norm(u)* np.linalg.norm(v))
+        similarity = np.dot(u, v)/denom
         ########################################################################
         #                          END OF YOUR CODE                            #
         ########################################################################
@@ -470,19 +582,16 @@ class Chatbot:
         # with cosine similarity, no mean-centering, and no normalization of   #
         # scores.                                                              #
         ########################################################################
-
         # Populate this list with k movie indices to recommend to the user.
         userRatedIndices = np.nonzero(user_ratings)[0]
         movieRatings = np.zeros(ratings_matrix.shape[0])
         for i in range(len(movieRatings)):
-            if i in userRatedIndices: continue
-            
-            for userRatedIndex in userRatedIndices:
-                movieRatings[i] += self.similarity(ratings_matrix[userRatedIndex], ratings_matrix[i]) * user_ratings[userRatedIndex]
-        
-        top = np.argsort(movieRatings)
+            if i not in userRatedIndices: 
+                for userRatedIndex in userRatedIndices:
+                    similarity_score = self.similarity(ratings_matrix[userRatedIndex], ratings_matrix[i])
+                    movieRatings[i] +=  similarity_score * user_ratings[userRatedIndex]
+        top = np.flip(np.argsort(movieRatings)) # sort from highest to lowest
         recommendations = top[:k]
-        
         ########################################################################
         #                        END OF YOUR CODE                              #
         ########################################################################

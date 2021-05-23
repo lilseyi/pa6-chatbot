@@ -9,11 +9,11 @@
 #########################################################################################
 
 FEATURE - Identifying movies without quotation marks and correct capitalization (part 1): NO
-FEATURE - Identifying movies without quotation marks and correct capitalization (part 2): NO
-FEATURE - Alternate/foreign titles: NO
-FEATURE - Disambiguation (part 1): NO
+FEATURE - Identifying movies without quotation marks and correct capitalization (part 2): YES
+FEATURE - Alternate/foreign titles: YES
+FEATURE - Disambiguation (part 1): YES
 FEATURE - Fine-grained sentiment extraction: NO
-FEATURE - Spell-correcting fallback for find_movies_by_title: NO
+FEATURE - Spell-correcting fallback for find_movies_by_title: YES
 FEATURE - Extracting sentiment with multiple-movie input: NO
 FEATURE - Disambiguation (part 2): NO
 FEATURE - Disambiguation (part 3): NO
