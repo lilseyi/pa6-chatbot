@@ -28,9 +28,7 @@ class Chatbot:
         
         # Creative Disambiguation (part 1) Dictionary Mapping Each title token to movie index
         self.disamb_title = {}
-        
-        # Creative Find movies cloest to title. Our preprocess method of lowering and remove spaces might be causing it to fail :<
-        self.titles_name = []
+     
         
         # Put self.titles in a better format
         # Creative (Alternate/foreign titles) Finds the alternate titles and adjusts for article in the alternate titles, (Alternate Title is in parentheses)
@@ -46,8 +44,6 @@ class Chatbot:
                     # If there is an alt title, stores the alt title as key and movie index as value
                     title_tokens = title.split()
                     
-                    # Creative: find the closest movie to title, creating a list of titles that are lower but don't have spaces removed
-                    self.titles_name.append(title.lower())
                     
                     for token in title_tokens:
                         # Cleans the movie string tokens (i.e jackson: jackson)
