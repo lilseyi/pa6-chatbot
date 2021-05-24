@@ -13,11 +13,15 @@ from porter_stemmer import PorterStemmer
 # noinspection PyMethodMayBeStatic
 class Chatbot:
     """Simple class to implement the chatbot for PA 6."""
-
     def __init__(self, creative=False):
         self.name = 'Chris'
         self.creative = creative
-        
+        self.flipWords = self.stem(["not","didn't", "never"], True)
+        self.fillerWords = self.stem(["really","absolutely", "undoubtedbly", "honestly"], True)
+        self.titlepattern = "\"([\w\.'é:\-\&/!?ó*\[\]\(\)\[, \]]+)\""
+        self.userData = []
+        self.confirmingResponse = False
+        self.archive = None
         # This matrix has the following shape: num_movies x num_users
         # The values stored in each row i and column j is the rating for
         # movie i by user j
@@ -28,66 +32,10 @@ class Chatbot:
         
         # Creative Disambiguation (part 1) Dictionary Mapping Each title token to movie index
         self.disamb_title = {}
-     
         
-        # Put self.titles in a better format
-        # Creative (Alternate/foreign titles) Finds the alternate titles and adjusts for article in the alternate titles, (Alternate Title is in parentheses)
-        def refineTitles(titleList):
-            titles = collections.defaultdict(list)
-            pattern = "((?:[\w\.'é:\+\-\&/!?ó*\[\]]+\s?)+)(?:\s|,\s(.+)\s)?(?:\((.+)\)\s)?(?:\((\d\d\d\d)-?(?:\d\d\d\d)?\))"
-            for i in range(len(titleList)):
-                titlefromlist, genre = titleList[i]
-                res = re.findall(pattern, titlefromlist)
-                if len(res) > 0:
-                    title, article, altTitle, year = re.findall(pattern, titlefromlist)[0]
-                    # Creative Disambiguation: index tokens of movie title to movie index
-                    # If there is an alt title, stores the alt title as key and movie index as value
-                    title_tokens = title.split()
-                    
-                    
-                    for token in title_tokens:
-                        # Cleans the movie string tokens (i.e jackson: jackson)
-                        processed_token = token.lower().replace(":","").replace(",","").replace(".","")
-                        if processed_token in self.disamb_title:
-                            curr_movies = self.disamb_title[processed_token]
-                            curr_movies.append(i)
-                            self.disamb_title[processed_token] = curr_movies
-                        else:
-                            self.disamb_title[processed_token] = [i]
-                    title = title.replace(" ", "").lower()
-                    titles[title].append([i, year, genre, article, altTitle])
-                    
-                    match = None
-                    # Checks if alternative title exsits
-                    # Creative adds article for alternate titles
-                    if len(altTitle) != 0:
-                        try:
-                            # Pattern to detect potenial articles such as Guerre du feu, La and replace them to be LaGuerre du feu to index them in the alternative titles dictionary which maps to movie index
-                            alt_pattern = "((?:[\w\.'ôûé:\+\-\&!?ó*\[\]]+\s?)+)(?:, )?(\w+)?"        
-                            match = re.findall(alt_pattern, altTitle)
-                            first = re.findall(alt_pattern, altTitle)[0][0]
-                            second = re.findall(alt_pattern, altTitle)[0][1]
-                            altTitle = second + first
-                            clean_alt_title  = altTitle.replace('a.k.a. ', "").lower().replace(" ", "")
-                        except:
-                            print("error", altTitle, match)
-                        self.alternate_titles[clean_alt_title] = i
-                else:
-                    titles[titlefromlist].append([i, None, genre, None, None])
-            return titles
-        
-        def refineSentiment(sentiment):
-            newSentiment = collections.defaultdict(int)
-            def stem(x):
-                stemmer = PorterStemmer()
-                return stemmer.stem(x, 0, len(x) - 1)
-            for key, value in sentiment.items():
-                newSentiment[stem(key)] = 1 if value == "pos" else -1
-            return newSentiment
-        
-        self.titleDict = refineTitles(self.titles)
+        self.titleDict = self.refineTitles(self.titles)
         self.sentiment = util.load_sentiment_dictionary('data/sentiment.txt')
-        self.newsentiment = refineSentiment(self.sentiment)
+        self.newsentiment = self.refineSentiment(self.sentiment)
 
         ########################################################################
         # TODO: Binarize the movie ratings matrix.                             #
@@ -130,7 +78,51 @@ class Chatbot:
         #                          END OF YOUR CODE                            #
         ########################################################################
         return goodbye_message
+        
+    def makePrediction(prefix, creative = False):
+        """
+        make a prediction based off the data we have
+        """
+        ########################################################################
+        # TODO: Edit for creative                    #
+        ########################################################################
 
+        self.archive = None
+        if len(self.userData) >= 3:
+            user_ratings = np.zeros(len(self.ratings))
+            for index, sentiment in self.userData:
+                user_ratings[index] = sentiment
+            recommendation = self.recommend(user_ratings, self.ratings, 1, creative)[0]
+            return "{} From what you've told me, I think you might like {}.\n feel free to tell me about any more movies you've seen, and I can improve on my suggestion".format(prefix, self.titles[recommendation][0])
+        else:
+            return "{} So tell me more about another movie you've seen".format(prefix)
+
+        ########################################################################
+
+    def confirmResponse(user_input, creative = False):
+        """
+        confirm wether the sentiment and movie we detect is correct or not
+        """
+        ########################################################################
+        # TODO: Edit for creative                    #
+        ########################################################################
+        confirmingResponse = self.archive != None
+        if not confirmingResponse: return
+
+        yorn = user_input.replace(" ","").replace(".","")
+        affirmitives = ["y","yeah","yes","mhm","yup","ye","yay"]
+        nonAffirmitives = ["n","nope","no","mm","nah","nada","nay"]
+        if yorn in affirmitives:
+            self.userData.append(self.archive)
+            return self.makePrediction("Ok cool!")
+        elif preprocessed_line in nonAffirmitives:
+            self.archive = None
+            return "oh, ok sorry for misunderstanding, what other movie have you seen?" 
+        else:
+            return 'I didn\'t get that, try answering "yes" or "no"'
+
+        ########################################################################
+            
     ############################################################################
     # 2. Modules 2 and 3: extraction and transformation                        #
     ############################################################################
@@ -161,42 +153,121 @@ class Chatbot:
         # directly based on how modular it is, we highly recommended writing   #
         # code in a modular fashion to make it easier to improve and debug.    #
         ########################################################################
-        if self.creative:
-            preprocessed_line = self.preprocess(line)
-            potential_movies = self.extract_titles(preprocessed_line)
-            if len(potential_movies) == 0: return "Sorry, I don't understand. Tell me about a movie that you have seen." 
+        
+        # if self.creative:
+        #     preprocessed_line = self.preprocess(line)
+        #     potential_movies = self.extract_titles(preprocessed_line)
+        #     if len(potential_movies) == 0: return "Sorry, I don't understand. Tell me about a movie that you have seen." 
             
-            # If the bot didn't find any movies ask again
-            movie_ids = self.find_movies_by_title(potential_movies[0])
-            movie_options = []
+        #     # If the bot didn't find any movies ask again
+        #     movie_ids = self.find_movies_by_title(potential_movies[0])
+        #     movie_options = []
             
-            # Get the movie titles 
-            for movie_id in movie_ids:
-                movie_options.append(self.titles[movie_id][0])
-            if len(movie_options) == 0: return "Sorry, I couldn't find that movie. Tell me about a movie that you have seen."     
+        #     # Get the movie titles 
+        #     for movie_id in movie_ids:
+        #         movie_options.append(self.titles[movie_id][0])
+        #     if len(movie_options) == 0: return "Sorry, I couldn't find that movie. Tell me about a movie that you have seen."     
             
-            # TODO : Handle Multiple Movie Options
-            response = "You said {}. Thank you! Tell me about another movie you have seen.".format(movie_options[0])
+        #     # TODO : Handle Multiple Movie Options
+        #     response = "You said {}. Thank you! Tell me about another movie you have seen.".format(movie_options[0])
+        # else:
+        preprocessed_line = self.preprocess(line)
+
+        # before we store any data, get confirmation from the user that we have the right info skip if not confirming
+        self.confirmingResponse(preprocessed_line) 
+        
+        # check if user put the movie in quotes
+        potential_movies = self.extract_titles(preprocessed_line)
+        if len(potential_movies) == 0: 
+            return "Sorry, I don't understand. Try putting the movie in quotes." 
+        
+        # If the bot didn't find any movies ask for another one
+        movie_ids = self.find_movies_by_title(potential_movies[0])
+        if len(movie_ids) == 0: 
+            return "Hm, I haven't seen that movie. Tell me about another one."  
+        # If we find a movie, we explicitly confirm the movie
         else:
-            preprocessed_line = self.preprocess(line)
-            potential_movies = self.extract_titles(preprocessed_line)
-            if len(potential_movies) == 0: return "Sorry, I don't understand. Tell me about a movie that you have seen." 
-            
-            # If the bot didn't find any movies ask again
-            movie_ids = self.find_movies_by_title(potential_movies[0])
-            movie_options = []
-            
-            # Get the movie titles 
-            for movie_id in movie_ids:
-                movie_options.append(self.titles[movie_id][0])
-            if len(movie_options) == 0: return "Sorry, I couldn't find that movie. Tell me about a movie that you have seen."     
-            
+            movie_id = movie_ids[0]
+            sentiment = self.extract_sentiment(preprocessed_line)
+            english_sentiment = "really liked" if sentiment == 1 else "weren't a big fan of"
+            self.archive = (movie_id, sentiment)
+            return "Ok, sounds to me like you {} {}, that right?".format(english_sentiment, self.titles[movie_id][0])
+    
             # TODO : Handle Multiple Movie Options
             response = "You said {}. Thank you! Tell me about another movie you have seen.".format(movie_options[0])
         ########################################################################
         #                          END OF YOUR CODE                            #
         ########################################################################
         return response
+    
+    def stem(self, x, islist = False):
+        stemmer = PorterStemmer()
+        if islist:
+            return [self.stem(y) for y in x]
+        return stemmer.stem(x, 0, len(x) - 1)
+    
+    def refineSentiment(self, sentiment):
+        newSentiment = collections.defaultdict(int)
+        
+        for key, value in sentiment.items():
+            newSentiment[self.stem(key)] = 1 if value == "pos" else -1
+        return newSentiment
+
+    def refineTitles(self, titleList):
+        """Put self.titles in a better format
+
+        Creative (Alternate/foreign titles) Finds the alternate titles 
+        and adjusts for article in the alternate titles, 
+        (Alternate Title is in parentheses)
+
+        :param titleList: self.titles returned from util.load_ratings('data/ratings.txt')
+        :returns: A dictionary with a key of the movie title and value of a list 
+                    of the form [index, year, genre, article, alternativeTitle]
+        """
+        titles = collections.defaultdict(list)
+        pattern = "((?:[\w\.'é:\+\-\&/!?ó*\[\]]+\s?)+)(?:\s|,\s(.+)\s)?(?:\((.+)\)\s)?(?:\((\d\d\d\d)-?(?:\d\d\d\d)?\))"
+
+        for i in range(len(titleList)):
+            titlefromlist, genre = titleList[i]
+            res = re.findall(pattern, titlefromlist)
+            if len(res) > 0:
+                title, article, altTitle, year = re.findall(pattern, titlefromlist)[0]
+                # Creative Disambiguation: index tokens of movie title to movie index
+                # If there is an alt title, stores the alt title as key and movie index as value
+                title_tokens = title.split()
+                for token in title_tokens:
+                    # Cleans the movie string tokens (i.e jackson: jackson)
+                    processed_token = token.lower().replace(":","").replace(",","").replace(".","")
+                    if processed_token in self.disamb_title:
+                        curr_movies = self.disamb_title[processed_token]
+                        curr_movies.append(i)
+                        self.disamb_title[processed_token] = curr_movies
+                    else:
+                        self.disamb_title[processed_token] = [i]
+                title = title.replace(" ", "").lower()
+                titles[title].append([i, year, genre, article, altTitle])
+                
+                match = None
+                # Checks if alternative title exsits
+                # Creative adds article for alternate titles
+                if len(altTitle) != 0:
+                    try:
+                        # Pattern to detect potenial articles such as Guerre du feu, 
+                        # La and replace them to be LaGuerre du feu to index them in 
+                        # the alternative titles dictionary which maps to movie index
+                        alt_pattern = "((?:[\w\.'ôûé:\+\-\&!?ó*\[\]]+\s?)+)(?:, )?(\w+)?"        
+                        match = re.findall(alt_pattern, altTitle)
+                        first = re.findall(alt_pattern, altTitle)[0][0]
+                        second = re.findall(alt_pattern, altTitle)[0][1]
+                        altTitle = second + first
+                        clean_alt_title  = altTitle.replace('a.k.a. ', "").lower().replace(" ", "")
+                    except:
+                        print("error", altTitle, match)
+                    self.alternate_titles[clean_alt_title] = i
+            # if title doesnt match regular expression, theres something really weird going on
+            else:
+                titles[titlefromlist].append([i, None, genre, None, None])
+        return titles
 
     @staticmethod
     def preprocess(text):
@@ -223,19 +294,7 @@ class Chatbot:
         ########################################################################
         #                             END OF YOUR CODE                         #
         ########################################################################
-        # space_separated = text.split(' ')
-        # arr = []
-        # token = ""
-        # for word in space_separated:
-        #     if token != "":
-        #         token += " " + word
-        #         if word[-1] == '\"':
-        #             arr.append(token)
-        #             token = ""
-        #     elif word[0] == '\"':
-        #         token += word
-        #     else:
-        #         arr.append(word)
+
         return text
 
     def extract_titles(self, preprocessed_input):
@@ -323,10 +382,10 @@ class Chatbot:
                 
         # Removes duplicates
         matches = list(set(matches))
-        print(matches)
+        #print(matches)
         return matches
 
-    def extract_sentiment(self, preprocessed_input):
+    def extract_sentiment(self, preprocessed_input, returnFlip = False, startSentence = True):
         """Extract a sentiment rating from a line of pre-processed text.
 
         You should return -1 if the sentiment of the text is negative, 0 if the
@@ -346,31 +405,27 @@ class Chatbot:
         pre-processed with preprocess()
         :returns: a numerical value for the sentiment of the text
         """
-        def stem(x, islist = False):
-            stemmer = PorterStemmer()
-            if islist:
-                return [stem(y) for y in x ]
-            return stemmer.stem(x, 0, len(x) - 1)
-        flipWords = stem(["not","didn't", "never"], True)
-        fillerWords = stem(["really","absolutely", "undoubtedbly", "honestly"], True)
-        titlepattern = "\"([\w\.'é:\-\&/!?ó*\[\]\(\) ]+)\""
+        
         wordspattern = "((?:[A-Za-z])[\w']+)"
-        flip = 1
+        
 
         # replace titles with X so it doesnt interfere with sentiment   
-        preprocessed_input = re.sub(titlepattern, 'X', preprocessed_input)
+        preprocessed_input = re.sub(self.titlepattern, 'X', preprocessed_input)
         words = re.findall(wordspattern, preprocessed_input)
-        # we want to check if the last word is a flip, so start with the first word outside the loop
-        total = 0 if stem(words[0]) not in self.newsentiment else self.newsentiment[stem(words[0])] # start with first word
+        # we want to check if the previous word is a flip, so start with the first word outside the loop
+        flip = -1 if words[0] in self.flipWords and startSentence else 1
+        total = 0 if self.stem(words[0]) not in self.newsentiment else self.newsentiment[self.stem(words[0])] # start with first word
 
+        # if we are returning the flip we need to assume there is a sentiment before the first word
         for i in range(1, len(words)):
-            currWord = stem(words[i])
-            prevWord = stem(words[i - 1])
+            currWord = self.stem(words[i])
+            prevWord = self.stem(words[i - 1])
             # flip the sentiment if a flip word comes before it
-            flip = -1 if prevWord in flipWords else flip if prevWord in fillerWords else 1
+            flip = -1 if prevWord in self.flipWords else flip if prevWord in self.fillerWords else 1
             if currWord in self.newsentiment:
                 total +=  flip * self.newsentiment[currWord]
-
+        if returnFlip:
+            return total/max(1,abs(total)), flip
         return total/max(1,abs(total))
 
     def extract_sentiment_for_movies(self, preprocessed_input):
@@ -394,7 +449,33 @@ class Chatbot:
         :returns: a list of tuples, where the first item in the tuple is a movie
         title, and the second is the sentiment in the text toward that movie
         """
-        return []
+        def cleanup(x):
+            return x.replace(" ","").replace(":","").replace(",","").replace(".","")
+
+        conjugations = ['and','but','&','or']
+        opinions = []
+        sentiments = []
+        for conj in conjugations:
+            if conj not in preprocessed_input.split(): continue
+            opinions = preprocessed_input.split(conj)
+    
+        for i in range(len(opinions)):
+            opinion = opinions[i]
+            title = self.extract_titles(opinion)[0]
+            opinion = opinion.split()
+            
+            if cleanup(re.sub(self.titlepattern, '', opinions[i])) == "":
+                sentiments.append((title, sentiments[i-1][1]))
+                continue
+            
+            sentiment, flip = self.extract_sentiment(opinions[i], True)
+            if sentiment == 0: sentiments.append((title, flip * sentiments[i-1][1]))
+            else: sentiments.append((title, sentiment))
+            
+            
+            #sentiments.append((title, sentiment))
+        #print(sentiments)
+        return sentiments
 
     def find_movies_closest_to_title(self, title, max_distance=3):
         """Creative Feature: Given a potentially misspelled movie title,
@@ -438,7 +519,7 @@ class Chatbot:
         
         potential_titles = []
         preproccessed_title = title.lower()
-        min_distance = 10000000000000000000
+        min_distance = 10000000000000000000 # arbitrarily large value
         movie_options = self.titleDict.keys()
         for i in range(len(self.titles)):
             movie_title = self.titles[i][0].lower().split(' (')[0] 
@@ -491,7 +572,7 @@ class Chatbot:
             res = re.findall(pattern, title)
             if len(res) > 0:
                 title, article, altTitle, year = re.findall(pattern, title)[0]
-                print(movie_idx, clarification, title, article, altTitle, year)
+                #print(movie_idx, clarification, title, article, altTitle, year)
                 # Check if the clarification is in the artle ex
                 if clarification in title or clarification in article or clarification in altTitle or clarification == year:
                     options.append(movie_idx)
