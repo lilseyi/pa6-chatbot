@@ -491,7 +491,7 @@ class Chatbot:
                 preprocessed_token = token.lower()
                 try:
                     #Check the intersection of the keywords if there are multiple words
-                    # Lazy coding...  but if the code got something from the previous code it should add
+                    #if the code got something from the previous code it should add
                     if token_index == 0:
                         matches += self.disamb_title.get(preprocessed_token)
                     else:
@@ -503,7 +503,7 @@ class Chatbot:
                 
         # Removes duplicates
         matches = list(set(matches))
-        #print(matches)
+        print(matches)
         return matches
 
     def extract_sentiment(self, preprocessed_input, returnFlip = False, startSentence = True):
@@ -686,6 +686,11 @@ class Chatbot:
         """
         # Iterate through the options and see which movie(s) are best
         options = []
+        
+        # Check if the clarification is just a number and represent the order in the list of candidates
+        if clarification.isnumeric() and len(candidates) >= int(clarification) and int(clarification) != 0:
+            return [candidates[int(clarification) - 1]]
+        
         if clarification == 'most recent': return [candidates[0]]
         if "first one" in clarification: return [candidates[0]]
         if "second one" in clarification: return [candidates[1]]
@@ -702,7 +707,23 @@ class Chatbot:
                 # Check if the clarification is in the artle ex
                 if clarification in title or clarification in article or clarification in altTitle or clarification == year:
                     options.append(movie_idx)
-        print("Results,", options)
+                    
+        # If nothing is find lets get complex with it
+        # We will split the strings into tokens as iterate through each string and see
+        # Which movie has the highest frequency of common words
+        if len(options) == 0:
+            highest_common_words = 0
+            best_canadiate = None
+            for movie_option_index in candidates:
+                common_words = 0
+                for token in clarification.split():
+                    movie_title = self.titles[movie_option_index][0]
+                    if token in movie_title:
+                        common_words += 1
+                    if common_words > highest_common_words:
+                        highest_common_words = common_words
+                        best_canadiate = movie_option_index
+            if best_canadiate != None: options.append(best_canadiate) 
         return options
 
     ############################################################################
@@ -715,7 +736,6 @@ class Chatbot:
 
         To binarize a matrix, replace all entries above the threshold with 1.
         and replace all entries at or below the threshold with a -1.
-
         Entries whose values are 0 represent null values and should remain at 0.
 
         Note that this method is intentionally made static, as you shouldn't use
