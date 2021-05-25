@@ -57,3 +57,4 @@ by that machine.
 # Optional: Feel free to include anything else that you want us to know about your      #
 # implementation!                                                                       #
 #########################################################################################
+If you run in creative mode something interesting happens when you dont input words (',.)
