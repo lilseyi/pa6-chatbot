@@ -128,7 +128,6 @@ class Chatbot:
             return "{} So tell me more about another movie you've seen".format(prefix)
 
         ########################################################################
-
     def confirmResponse(self, prompt, user_input = ""):
         """
         confirm wether the sentiment and movie we detect is correct or not
@@ -178,8 +177,8 @@ class Chatbot:
         if self.mode !=  "clarifySentiment":
             self.mode = "clarifySentiment"
             movie = self.titles[self.archive[0]][0]
-            notRobot = ["Here's the thing, i dont know if you like {} or not can you tell me more?".format(movie), 
-                        "So.... do you like {} or not, talk to me".format(movie)]
+            notRobot = ["Okay, Here's the thing, i dont know if you like {} or not can you tell me more?".format(movie), 
+                        "Ok so.... do you love or hate {}, talk to me".format(movie)]
             return random.choice(notRobot)
         else:
             sentiment = self.extract_sentiment(user_input)
@@ -205,10 +204,10 @@ class Chatbot:
         else:
             if self.mode != "clarifyTitle":
                 self.mode = "clarifyTitle"
-                response = "Which one did you mean?\n"
+                response = "Which one did you mean?"
                 self.titleOptionsToNarrow = possible_titles
                 for i, title in enumerate(possible_titles):
-                    response += "{}. {}\n".format(i + 1,self.titles[title][0])
+                    response += "\n{}. {}".format(i + 1,self.titles[title][0])
                 return response
             else:
                 self.titleOptionsToNarrow = self.disambiguate(user_input, self.titleOptionsToNarrow)
@@ -283,6 +282,25 @@ class Chatbot:
         prompt += ", is that correct?"
         self.go_back_mode = "newMovie"
         return self.confirmResponse(prompt)
+    def startsWithCanYou(self, user_input):
+        user_input = user_input.lower().replace("?","").replace(".","")
+        pattern = "((?:can you)|(?:will you)|(?:what is)|(?:whats))(.+)"
+        res = re.findall(pattern, user_input)
+        return len(res) > 0
+    def canYouResponse(self, user_input):
+        """
+        get more than one sentiment at a time
+        """
+        user_input = user_input.lower().replace("?","").replace(".","")
+        pattern = "((?:can you)|(?:will you)|(?:what is)|(?:whats))(.+)"
+        question, body = re.findall(pattern, user_input)[0]
+        if question == "can you":
+            return "Nah, I can't {}".format(body)
+        if question == "will you":
+            return "If I could I would {}, but lets just talk about movies you've watched".format(body)
+        if question == "what is" or question == "whats":
+            return "I'll ask my good pal google what {} is later".format(body)
+        return "Not sure"
         
     def handleEmpty(self, user_input):
         """
@@ -355,53 +373,51 @@ class Chatbot:
         # handle empty strings
         res = self.handleEmpty(preprocessed_line)
         if(res != None): return res
-        
-        if self.mode == "end":
-            print("self.mode == end")
-            return self.goodbye()
-        if self.mode == "predict":
-            print("self.mode == predict")
-            return self.makePrediction("")
-        if self.mode == "confirm":
-            print("self.mode == confirm")
-            return self.confirmResponse("", preprocessed_line)
-        if self.mode == "clarifySentiment":
-            print("self.mode == clarifySentiment")
-            return self.clarifySentiment(preprocessed_line)
-        if self.mode == "clarifyTitle":
-            print("self.mode == clarifyTitle")
-            return self.clarifyTitle(preprocessed_line, None)
-        if self.mode == "handleMultipleTitles":
-            print("self.mode == handleMultipleTitles")
-            return self.handleMultipleTitles(None)
-        if self.mode == "newMovie":
-            print("self.mode == newMovie")
-            sentiment = self.extract_sentiment(preprocessed_line)
-            self.archive = (self.archive[0], sentiment)
-            potential_movies = self.extract_titles(preprocessed_line)
-            # check if user put at least 1 movie in quotes 
-            if len(potential_movies) == 0: 
-                return "Sorry, I don't understand. Try putting movies in quotes." 
-            if len(potential_movies) == 1: 
-                return self.processUserTitle(potential_movies[0])
-            if len(potential_movies) > 1:
-                return self.handleMultipleTitles(preprocessed_line) 
-            
-
-        if self.mode == "confirmArchive":
-            print("self.mode == confirmArchive")
-            print("here")
-            if self.archive[1] == 0:
-                self.go_back_mode = "confirmArchive"
-                return self.clarifySentiment("")
-            movie_id, sentiment = self.archive
-            sentiment_in_english = "really liked" if sentiment == 1 else "weren't a big fan of"
-            self.go_back_mode = "predict"
-            self.certain = True
-            return self.confirmResponse("Ok, sounds to me like you {} {}, that right?".format(sentiment_in_english, self.titles[movie_id][0]))
-        self.certain = False
-        self.mode = "newMovie"
-        return "Uh... Lets talk about a new movie please"
+        try:
+            if self.mode == "end":
+                return self.goodbye()
+            if self.mode == "predict":
+                return self.makePrediction("")
+            if self.mode == "confirm":
+                return self.confirmResponse("", preprocessed_line)
+            if self.mode == "clarifySentiment":
+                return self.clarifySentiment(preprocessed_line)
+            if self.mode == "clarifyTitle":
+                return self.clarifyTitle(preprocessed_line, None)
+            if self.mode == "handleMultipleTitles":
+                return self.handleMultipleTitles(None)
+            if self.mode == "newMovie":
+                if self.startsWithCanYou(preprocessed_line):
+                    return self.canYouResponse(preprocessed_line)
+                sentiment = self.extract_sentiment(preprocessed_line)
+                self.archive = (self.archive[0], sentiment)
+                potential_movies = self.extract_titles(preprocessed_line)
+                # check if user put at least 1 movie in quotes 
+                if len(potential_movies) == 0: 
+                    notRobot = ["Sorry, I don't understand. Try putting movies in quotes.",
+                                "Is that a movie?",
+                                "I only know how to talk about movies, put them in quotes"]
+                    return random.choice(notRobot)
+                if len(potential_movies) == 1: 
+                    return self.processUserTitle(potential_movies[0])
+                if len(potential_movies) > 1:
+                    return self.handleMultipleTitles(preprocessed_line) 
+            if self.mode == "confirmArchive":
+                if self.archive[1] == 0:
+                    self.go_back_mode = "confirmArchive"
+                    return self.clarifySentiment("")
+                movie_id, sentiment = self.archive
+                sentiment_in_english = "really liked" if sentiment == 1 else "weren't a big fan of"
+                self.go_back_mode = "predict"
+                self.certain = True
+                return self.confirmResponse("Ok, sounds to me like you {} {}, that right?".format(sentiment_in_english, self.titles[movie_id][0]))
+        except:
+            self.certain = False
+            self.mode = "newMovie"
+            if self.creative:
+                return "My brain is lowkey fried... Lets talk about a new movie please"
+            else:
+                return "Sorry, can we talk about a new movie"
     
 
         ########################################################################
@@ -471,8 +487,8 @@ class Chatbot:
                         altTitle = second + first
                         clean_alt_title  = altTitle.replace('a.k.a. ', "").lower().replace(" ", "")
                     except:
-                        print("error", altTitle, match)
-                    self.alternate_titles[clean_alt_title] = i
+                        # print("error", altTitle, match)
+                        self.alternate_titles[clean_alt_title] = i
             # if title doesnt match regular expression, theres something really weird going on
             else:
                 titles[titlefromlist].append([i, None, genre, None, None])
@@ -564,7 +580,7 @@ class Chatbot:
                 matches.append(i_index)
             elif year.replace(' ', '') in i_year:
                 matches.append(i_index)
-                print(matches)
+                #print(matches)
         # Creative : Check if they used an alternative name
         # EDGE CASE: What if results aren't empty but they used a alt name?
         if len(results) == 0:
@@ -575,7 +591,7 @@ class Chatbot:
                 pass
             # Creative Disambiguation (Part 1) Returns all movies containing the tokens in title
             if self.creative:
-                for token_index, token in enumerate(title.split()):
+                for token_index, token in enumerate(u_title.split()):
                     preprocessed_token = token.lower()
                     try:
                         #Check the intersection of the keywords if there are multiple words
@@ -623,7 +639,7 @@ class Chatbot:
 
         # this shouldn't happen, if it does, there are bugs in non sentiment code
         if len(words) == 0:
-            print("tell the idiot that coded this that there is an empty list being passed into the sentiment function")
+            #print("tell the idiot that coded this that there is an empty list being passed into the sentiment function")
             return 0
         # we want to check if the previous word is a flip, so start with the first word outside the loop
         flip = -1 if words[0] in self.flipWords and startSentence else 1
@@ -682,7 +698,11 @@ class Chatbot:
                 continue
             
             sentiment, flip = self.extract_sentiment(opinions[i], True)
-            if sentiment == 0: sentiments.append((title, flip * sentiments[i-1][1]))
+            if sentiment == 0: 
+                if i != 0:
+                    sentiments.append((title, flip * sentiments[i-1][1]))
+                else:
+                    sentiments.append((title, flip * sentiment))
             else: sentiments.append((title, sentiment))
             
             
@@ -783,7 +803,7 @@ class Chatbot:
         places = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eight", "ninth","tenth"]
         for i, place in enumerate(places):
             if place in clarification and candlen >= i + 1: 
-                print(place)
+                #print(place)
                 return [candidates[i]]
         
         # if "second" in clarification: return [candidates[1]]
@@ -822,9 +842,6 @@ class Chatbot:
                         highest_common_words = common_words
                         best_canadiate = movie_option_index
             if best_canadiate != None: options.append(best_canadiate) 
-        print("clarification: {}".format(clarification))
-        print("candidates: {}".format(candidates))
-        print("new candidates: {}".format(options))
         return options if len(options) > 0 else candidates
 
     ############################################################################
