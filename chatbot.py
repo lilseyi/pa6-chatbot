@@ -16,7 +16,7 @@ class Chatbot:
     def __init__(self, creative=False):
         self.name = 'Chris'
         self.creative = creative
-        self.flipWords = self.stem(["not","didn't", "never", "wasn't"], True)
+        self.flipWords = self.stem(["not","didnt", "never", "wasnt", "dont"], True)
         self.fillerWords = self.stem(["really","absolutely", "undoubtedbly", "honestly"], True)
         self.titlepattern = "\"([\w\.'é:\-\&/!?ó*\[\]\(\)\[, \]]+)\""
         self.userData = []
@@ -647,8 +647,8 @@ class Chatbot:
 
         # if we are returning the flip we need to assume there is a sentiment before the first word
         for i in range(1, len(words)):
-            currWord = self.stem(words[i])
-            prevWord = self.stem(words[i - 1])
+            currWord = self.stem(words[i].replace("'",""))
+            prevWord = self.stem(words[i - 1].replace("'",""))
             # flip the sentiment if a flip word comes before it
             flip = -1 if prevWord in self.flipWords else flip if prevWord in self.fillerWords else 1
             if currWord in self.newsentiment:
