@@ -20,7 +20,7 @@ FEATURE - Disambiguation (part 3): YES
 FEATURE - Dialogue for spell-checking: YES
 FEATURE - Dialogue for disambiguation: YES
 FEATURE - Communicating sentiments and movies extracted to the user given multiple-movie input: YES
-FEATURE - Responding to arbitrary input: NO
+FEATURE - Responding to arbitrary input: YES
 FEATURE - Identifying and responding to emotions: NO
 Did not implement any of the above features: NO
 

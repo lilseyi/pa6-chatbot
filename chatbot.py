@@ -157,6 +157,8 @@ class Chatbot:
                 return self.goodbye()
             self.mode = "newMovie"
             self.certain = False
+            self.archive = (None, None)
+            self.archiveList = []
             notRobot = ["oh, ok sorry for misunderstanding, what other movie have you seen?", 
                         "Sorry im just brain freezing right now, what other movie have you watched", 
                         "Yeah, lets just skip this one, tell me about anoter movie",
@@ -276,17 +278,19 @@ class Chatbot:
                 return "couldn't find one of those titles, lets try another movie"
             self.archive = (title_indices[0],result[1])
             self.archiveList.append((title_indices[0],result[1]))
-        prompt = "So you {} {}".format(senti[results[0][1]],results[0][0])
+        prompt = "So you {} {}".format(senti[results[0][1]],self.titles[self.archiveList[0][0]][0])
         for i in range(1, len(result)):
-            prompt += " and {} {}".format(senti[results[i][1]],results[i][0])
+            prompt += " and {} {}".format(senti[results[i][1]],self.titles[self.archiveList[i][0]][0])
         prompt += ", is that correct?"
         self.go_back_mode = "newMovie"
         return self.confirmResponse(prompt)
+    
     def startsWithCanYou(self, user_input):
         user_input = user_input.lower().replace("?","").replace(".","")
         pattern = "((?:can you)|(?:will you)|(?:what is)|(?:whats))(.+)"
         res = re.findall(pattern, user_input)
         return len(res) > 0
+
     def canYouResponse(self, user_input):
         """
         get more than one sentiment at a time
@@ -408,7 +412,7 @@ class Chatbot:
                     return self.clarifySentiment("")
                 movie_id, sentiment = self.archive
                 sentiment_in_english = "really liked" if sentiment == 1 else "weren't a big fan of"
-                self.go_back_mode = "predict"
+                self.go_back_mode = "newMovie"
                 self.certain = True
                 return self.confirmResponse("Ok, sounds to me like you {} {}, that right?".format(sentiment_in_english, self.titles[movie_id][0]))
         except:
@@ -981,11 +985,10 @@ class Chatbot:
         chatbot can do and how the user can interact with it.
         """
         return """
-        Your task is to implement the chatbot as detailed in the PA6
-        instructions.
-        Remember: in the starter mode, movie names will come in quotation marks
-        and expressions of sentiment will be simple!
-        TODO: Write here the description for your own chatbot!
+        Hi! my name is Chris and I'm a professional movie reviewerbot. 
+        Since I've watched almost every movie there is, I can help you choose 
+        a perfect movie for your movie night or just help you figure 
+        out your movie taste!
         """
 
 
