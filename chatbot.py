@@ -34,7 +34,7 @@ class Chatbot:
         self.alternate_titles = {}
         
         # Creative Disambiguation (part 1) Dictionary Mapping Each title token to movie index
-        self.disamb_title = {}
+        self.disamb_title = collections.defaultdict(list)
         
         self.titleDict = self.refineTitles(self.titles)
         self.sentiment = util.load_sentiment_dictionary('data/sentiment.txt')
@@ -188,9 +188,9 @@ class Chatbot:
         # TODO: Edit for creative                    #
         ########################################################################
         if not self.creative:
-            return "there are more than one titles that match {} please specify".format(user_input_title)
+            return "there is more than one title that matches {} please specify".format(user_input_title)
         else:
-            return "there are more than one titles that match {} please specify".format(user_input_title)
+            return "there is more than one title that matches {} please specify".format(user_input_title)
 
         ########################################################################
 
@@ -493,9 +493,9 @@ class Chatbot:
                     #Check the intersection of the keywords if there are multiple words
                     #if the code got something from the previous code it should add
                     if token_index == 0:
-                        matches += self.disamb_title.get(preprocessed_token)
+                        matches += self.disamb_title[preprocessed_token]
                     else:
-                        token_movies = self.disamb_title.get(preprocessed_token)
+                        token_movies = self.disamb_title[preprocessed_token]
                         common_movies = set(matches).intersection(set(token_movies))
                         matches = list(common_movies)
                 except:
@@ -503,7 +503,7 @@ class Chatbot:
                 
         # Removes duplicates
         matches = list(set(matches))
-        print(matches)
+        #print(matches)
         return matches
 
     def extract_sentiment(self, preprocessed_input, returnFlip = False, startSentence = True):
