@@ -232,7 +232,6 @@ class Chatbot:
         # TODO: Edit for creative                    #
         ########################################################################
         movie_ids = self.find_movies_by_title(user_input_title)
-        print(movie_ids)
         if len(movie_ids) == 0 and not self.creative: 
             notRobot = ["Hm, I haven't seen that movie. Tell me about another one.", 
                             "Haven't heard of {} try another movie".format(user_input_title)]
@@ -269,7 +268,6 @@ class Chatbot:
         """
         senti = {-1: "don't like", 0: "are indifferent to", 1: "like"}
         results = self.extract_sentiment_for_movies(user_input)
-        print(results)
         for result in results:
             title_indices = self.find_movies_by_title(result[0])
             if(len(title_indices) < 1):
@@ -279,12 +277,10 @@ class Chatbot:
                 return "couldn't find one of those titles, lets try another movie"
             self.archive = (title_indices[0],result[1])
             self.archiveList.append((title_indices[0],result[1]))
-        print(self.archiveList)
         prompt = "So you {} {}".format(senti[results[0][1]],results[0][0])
         for i in range(1, len(result)):
             prompt += " and {} {}".format(senti[results[i][1]],results[i][0])
         prompt += ", is that correct?"
-        print(prompt)
         self.go_back_mode = "newMovie"
         return self.confirmResponse(prompt)
         
@@ -579,7 +575,7 @@ class Chatbot:
                 pass
             # Creative Disambiguation (Part 1) Returns all movies containing the tokens in title
             if self.creative:
-                for token_index, token in enumerate(u_title.split()):
+                for token_index, token in enumerate(title.split()):
                     preprocessed_token = token.lower()
                     try:
                         #Check the intersection of the keywords if there are multiple words
