@@ -7,8 +7,8 @@ import re
 import numpy as np
 import collections
 from porter_stemmer import PorterStemmer
-
-
+from collections import deque
+import random
 
 # noinspection PyMethodMayBeStatic
 class Chatbot:
@@ -16,12 +16,14 @@ class Chatbot:
     def __init__(self, creative=False):
         self.name = 'Chris'
         self.creative = creative
-        self.flipWords = self.stem(["not","didn't", "never"], True)
+        self.flipWords = self.stem(["not","didn't", "never", "wasn't"], True)
         self.fillerWords = self.stem(["really","absolutely", "undoubtedbly", "honestly"], True)
         self.titlepattern = "\"([\w\.'é:\-\&/!?ó*\[\]\(\)\[, \]]+)\""
         self.userData = []
-        self.confirmingResponse = False
         self.archive = None
+        self.queue = deque([])
+        self.silentGame = 0
+        self.mode = "ask" # "ask" "confirm" "clarifySentiment" 
         # This matrix has the following shape: num_movies x num_users
         # The values stored in each row i and column j is the rating for
         # movie i by user j
@@ -79,7 +81,7 @@ class Chatbot:
         ########################################################################
         return goodbye_message
         
-    def makePrediction(prefix, creative = False):
+    def makePrediction(self, prefix, creative = False):
         """
         make a prediction based off the data we have
         """
@@ -90,39 +92,90 @@ class Chatbot:
         self.archive = None
         if len(self.userData) >= 3:
             user_ratings = np.zeros(len(self.ratings))
+            print("bug")
             for index, sentiment in self.userData:
                 user_ratings[index] = sentiment
+            print("bug")
             recommendation = self.recommend(user_ratings, self.ratings, 1, creative)[0]
-            return "{} From what you've told me, I think you might like {}.\n feel free to tell me about any more movies you've seen, and I can improve on my suggestion".format(prefix, self.titles[recommendation][0])
+            print("bug")
+            return "{} From what you've told me, I think you might like {}.\n feel free to tell me about any more movies you've seen, and I can improve on my suggestion"\
+            .format(prefix, self.titles[recommendation][0])
         else:
             return "{} So tell me more about another movie you've seen".format(prefix)
 
         ########################################################################
 
-    def confirmResponse(user_input, creative = False):
+    def confirmResponse(self, prompt, creative = False, user_input = ""):
         """
         confirm wether the sentiment and movie we detect is correct or not
         """
         ########################################################################
         # TODO: Edit for creative                    #
         ########################################################################
-        confirmingResponse = self.archive != None
-        if not confirmingResponse: return
-
+        if self.mode != "confirm":
+            self.mode = "confirm"
+            return prompt
         yorn = user_input.replace(" ","").replace(".","")
         affirmitives = ["y","yeah","yes","mhm","yup","ye","yay"]
         nonAffirmitives = ["n","nope","no","mm","nah","nada","nay"]
         if yorn in affirmitives:
             self.userData.append(self.archive)
+            self.mode = "predict"
             return self.makePrediction("Ok cool!")
-        elif preprocessed_line in nonAffirmitives:
+        elif yorn in nonAffirmitives:
             self.archive = None
-            return "oh, ok sorry for misunderstanding, what other movie have you seen?" 
+            self.mode = "ask"
+            notRobot = ["oh, ok sorry for misunderstanding, what other movie have you seen?", 
+                        "Sorry im just brain freezing right now, what other movie have you watched", 
+                        "Yeah, lets just skip this one, tell me about anoter movie",
+                        "Lets talk about another movie"]
+            return  random.choice(notRobot)
         else:
             return 'I didn\'t get that, try answering "yes" or "no"'
 
         ########################################################################
-            
+    
+    def clarifySentiment(self, user_input):
+        """
+        confirm wether the sentiment and movie we detect is correct or not
+        """
+        ########################################################################
+        # TODO: Edit for creative                    #
+        ########################################################################
+        if self.mode !=  "clarifySentiment":
+            self.mode = "clarifySentiment"
+            movie = self.titles[self.archive[0]][0]
+            notRobot = ["Here's the thing, i dont know if you like {} or not can you tell me more?".format(movie), 
+                        "So.... do you like {} or not, talk to me".format(movie)]
+            return random.choice(notRobot)
+        else:
+            sentiment = self.extract_sentiment(user_input)
+            if(sentiment == 0): 
+                self.mode = "" # clear mode so bot can ask question again, recurse
+                return self.clarifySentiment("")
+            self.archive = (self.archive[0], sentiment)
+            return self.confirmResponse("so you hate it" if sentiment == -1 else "so you love it")
+
+        ########################################################################
+    def handleEmpty(self, user_input):
+        """
+        this function is completely useless cuz they handle empty strings for you already
+        """
+        if(self.silentGame > 0):
+                self.silentGame = self.silentGame - 1
+                return "                           "
+        if user_input.replace(".", "").replace(",", "").replace(":", "") == "":
+            notRobot = ["Please type something"]
+            if self.creative:
+                notRobot = ["Say something to me hun", "Why dont you wanna talk to me :(", "Oh wow, the silent treatment", 
+                            "two can play at that game", "....um is your keyboard working", "stop it, be reasonable",
+                            "I need words dude, actual words", "Sigh, please say words", "Okay i'm getting upset" ]
+            choice = random.choice(notRobot)
+            if choice == "two can play at that game":
+                self.silentGame = 3
+            return choice
+        else: return None
+    
     ############################################################################
     # 2. Modules 2 and 3: extraction and transformation                        #
     ############################################################################
@@ -172,29 +225,51 @@ class Chatbot:
         #     response = "You said {}. Thank you! Tell me about another movie you have seen.".format(movie_options[0])
         # else:
         preprocessed_line = self.preprocess(line)
-
+        # handle empty strings
+        res = self.handleEmpty(preprocessed_line)
+        if(res != None): return res
         # before we store any data, get confirmation from the user that we have the right info skip if not confirming
-        self.confirmingResponse(preprocessed_line) 
+        if self.mode == "confirm":
+            return self.confirmResponse("",self.creative, preprocessed_line)
+        if self.mode == "clarifySentiment":
+            return self.clarifySentiment(preprocessed_line)
         
-        # check if user put the movie in quotes
+        # check if user put at least 1 movie in quotes
         potential_movies = self.extract_titles(preprocessed_line)
         if len(potential_movies) == 0: 
-            return "Sorry, I don't understand. Try putting the movie in quotes." 
+            return "Sorry, I don't understand. Try putting movies in quotes." 
         
+        # If there is no result for a movie check other spellings or titles
         # If the bot didn't find any movies ask for another one
+        
         movie_ids = self.find_movies_by_title(potential_movies[0])
         if len(movie_ids) == 0: 
-            return "Hm, I haven't seen that movie. Tell me about another one."  
+            movie = potential_movies[0]
+            notRobot = ["Hm, I haven't seen that movie. Tell me about another one.", 
+                            "Haven't heard of {} try another movie".format(movie)]
+            if self.creative:
+                notRobot = ["Hm, I haven't seen that movie. Tell me about another one.", 
+                            "Haven't heard of {} try another movie".format(movie), 
+                            "Ooooooo I love that movie!....sike, talk about another one",
+                            "I bet {} would be great to talk about but can you tell me about a different one?".format(movie)]
+            return random.choice(notRobot)
         # If we find a movie, we explicitly confirm the movie
         else:
             movie_id = movie_ids[0]
             sentiment = self.extract_sentiment(preprocessed_line)
-            english_sentiment = "really liked" if sentiment == 1 else "weren't a big fan of"
             self.archive = (movie_id, sentiment)
-            return "Ok, sounds to me like you {} {}, that right?".format(english_sentiment, self.titles[movie_id][0])
+            if sentiment == 0:
+                return self.clarifySentiment("")
+            
+            sentiment_in_english = "really liked" if sentiment == 1 else "weren't a big fan of"
+            self.archive = (movie_id, sentiment)
+            return self.confirmResponse("Ok, sounds to me like you {} {}, that right?".format(sentiment_in_english, self.titles[movie_id][0]))
     
             # TODO : Handle Multiple Movie Options
             response = "You said {}. Thank you! Tell me about another movie you have seen.".format(movie_options[0])
+
+
+
         ########################################################################
         #                          END OF YOUR CODE                            #
         ########################################################################
@@ -412,6 +487,11 @@ class Chatbot:
         # replace titles with X so it doesnt interfere with sentiment   
         preprocessed_input = re.sub(self.titlepattern, 'X', preprocessed_input)
         words = re.findall(wordspattern, preprocessed_input)
+
+        # this shouldn't happen, if it does, there are bugs in non sentiment code
+        if len(words) == 0:
+            print("tell the idiot that coded this that there is an empty list being passed into the sentiment function")
+            return 0
         # we want to check if the previous word is a flip, so start with the first word outside the loop
         flip = -1 if words[0] in self.flipWords and startSentence else 1
         total = 0 if self.stem(words[0]) not in self.newsentiment else self.newsentiment[self.stem(words[0])] # start with first word
