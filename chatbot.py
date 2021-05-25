@@ -20,11 +20,13 @@ class Chatbot:
         self.fillerWords = self.stem(["really","absolutely", "undoubtedbly", "honestly"], True)
         self.titlepattern = "\"([\w\.'é:\-\&/!?ó*\[\]\(\)\[, \]]+)\""
         self.userData = []
-        self.go_back_mode = "ask"
-        self.archive = None
+        self.certain = False # make sure this is true before moving on
+        self.go_back_mode = "newMovie"
+        self.archive = (None, None)
         self.recommendations = None
         self.silentGame = 0
-        self.mode = "ask" # "ask" "confirm" "clarifySentiment" "predict"
+        self.titleOptionsToNarrow = None
+        self.mode = "newMovie" # "ask" "confirm" "clarifySentiment" "predict"
         # This matrix has the following shape: num_movies x num_users
         # The values stored in each row i and column j is the rating for
         # movie i by user j
@@ -90,7 +92,6 @@ class Chatbot:
         # TODO: Edit for creative                    #
         ########################################################################
 
-        self.archive = None
         if len(self.userData) >= 5:
             if self.mode != "predict":
                 self.mode = "predict"
@@ -116,8 +117,12 @@ class Chatbot:
                             "My best guess is that {} will make for a perfect movie for you. Want to see my next best?".format(recommendation)]
                 self.go_back_mode = "predict"
                 return self.confirmResponse(random.choice(notRobot), "")
-
+        elif self.archive[1] == 0 or not self.certain:
+            return self.process("Dummy data: {}".format(self.archive[0]))
         else:
+            self.certain = False
+            self.mode = "newMovie"
+            self.archive = (None, None)
             return "{} So tell me more about another movie you've seen".format(prefix)
 
         ########################################################################
@@ -133,19 +138,19 @@ class Chatbot:
         if self.mode != "confirm":
             self.mode = "confirm"
             return prompt
-        yorn = user_input.replace(" ","").replace(".","")
+        yorn = user_input.replace(" ","").replace(".","").replace("!","")
         affirmitives = ["y","yeah","yes","mhm","yup","ye","yay"]
         nonAffirmitives = ["n","nope","no","mm","nah","nada","nay"]
         if yorn in affirmitives:
-            self.userData.append(self.archive)
+            if self.archive != None: self.userData.append(self.archive)
             self.mode = self.go_back_mode
             return self.makePrediction("Ok cool!")
         elif yorn in nonAffirmitives:
             # hacky way to end
             if(self.go_back_mode == "predict"):
                 return self.goodbye()
-            self.archive = None
-            self.mode = "ask"
+            self.mode = "newMovie"
+            self.certain = False
             notRobot = ["oh, ok sorry for misunderstanding, what other movie have you seen?", 
                         "Sorry im just brain freezing right now, what other movie have you watched", 
                         "Yeah, lets just skip this one, tell me about anoter movie",
@@ -175,12 +180,12 @@ class Chatbot:
                 self.mode = "" # clear mode so bot can ask question again, recurse
                 return self.clarifySentiment("")
             self.archive = (self.archive[0], sentiment)
-            self.go_back_mode = "ask"
+            #self.go_back_mode = "newMovie"
             return self.confirmResponse("so you hate it" if sentiment == -1 else "so you love it")
 
         ########################################################################
     
-    def clarifyTitle(self, user_input_title, possible_titles):
+    def clarifyTitle(self, user_input, possible_titles):
         """
         confirm which title when there are more than 1 options
         """
@@ -188,9 +193,61 @@ class Chatbot:
         # TODO: Edit for creative                    #
         ########################################################################
         if not self.creative:
-            return "there is more than one title that matches {} please specify".format(user_input_title)
+            self.mode = "newMovie"
+            return "there is more than one title that matches {} please specify".format(user_input)
         else:
-            return "there is more than one title that matches {} please specify".format(user_input_title)
+            if self.mode != "clarifyTitle":
+                self.mode = "clarifyTitle"
+                response = "Which one did you mean?\n"
+                self.titleOptionsToNarrow = possible_titles
+                for i, title in enumerate(possible_titles):
+                    response += "{}. {}\n".format(i + 1,self.titles[title][0])
+                return response
+            else:
+                self.titleOptionsToNarrow = self.disambiguate(user_input, self.titleOptionsToNarrow)
+                if len(self.titleOptionsToNarrow) == 1:
+                    self.mode = "confirmArchive"
+                    self.archive = (self.titleOptionsToNarrow[0],self.archive[1])
+                    return self.process("random stuff that doesnt matter")
+                else:
+                    response = "try to get more specific, these options are still a possibility\n"
+                    for i, title in enumerate(self.titleOptionsToNarrow):
+                        response += "{}. {}\n".format(i + 1,self.titles[title][0])
+                    return response
+            return "there is more than one title that matches {} please specify".format(user_input)
+
+        ########################################################################
+    def processUserTitle(self, user_input_title):
+        """
+        find all the matches, narrrow down to one, update archive
+        """
+        ########################################################################
+        # TODO: Edit for creative                    #
+        ########################################################################
+        movie_ids = self.find_movies_by_title(user_input_title)
+        if len(movie_ids) == 0 and not self.creative: 
+            notRobot = ["Hm, I haven't seen that movie. Tell me about another one.", 
+                            "Haven't heard of {} try another movie".format(user_input_title)]
+            return random.choice(notRobot)
+
+        elif len(movie_ids) == 0 and self.creative:
+            movie_ids = self.find_movies_closest_to_title(user_input_title)
+            if len(movie_ids) == 0:
+                notRobot = ["Hm, I haven't seen that movie. Tell me about another one.", 
+                            "Haven't heard of {} try another movie".format(user_input_title), 
+                            "Ooooooo I love that movie!....sike, talk about another one",
+                            "I bet {} would be great to talk about but can you tell me about a different one?".format(user_input_title)]
+                return random.choice(notRobot)
+            if len(movie_ids) == 1:
+                self.archive = (movie_ids[0], self.archive[1])
+                movie = self.titles[movie_ids[0]][0]
+                notRobot = ["Do you mean {}".format(movie), 
+                            "I've heard of {} is that what you're talking about?".format(movie),
+                            "Is {} right?".format(movie)]
+                self.go_back_mode = "confirmArchive"
+                return self.confirmResponse(random.choice(notRobot))
+        elif len(movie_ids) > 1:
+            return self.clarifyTitle(user_input_title, movie_ids)
 
         ########################################################################
 
@@ -257,64 +314,54 @@ class Chatbot:
         #     for movie_id in movie_ids:
         #         movie_options.append(self.titles[movie_id][0])
         #     if len(movie_options) == 0: return "Sorry, I couldn't find that movie. Tell me about a movie that you have seen."     
-            
-        #     # TODO : Handle Multiple Movie Options
-        #     response = "You said {}. Thank you! Tell me about another movie you have seen.".format(movie_options[0])
-        # else:
+
+        # method variables
         preprocessed_line = self.preprocess(line)
+        potential_movies = None
+    
         # handle empty strings
         res = self.handleEmpty(preprocessed_line)
         if(res != None): return res
-        # before we store any data, get confirmation from the user that we have the right info skip if not confirming
+        
         if self.mode == "end":
+            print("self.mode == end")
             return self.goodbye()
         if self.mode == "predict":
+            print("self.mode == predict")
             return self.makePrediction("")
         if self.mode == "confirm":
+            print("self.mode == confirm")
             return self.confirmResponse("", preprocessed_line)
         if self.mode == "clarifySentiment":
+            print("self.mode == clarifySentiment")
             return self.clarifySentiment(preprocessed_line)
         if self.mode == "clarifyTitle":
-            return self.clarifyTitle(preprocessed_line)
-        # check if user put at least 1 movie in quotes
-        potential_movies = self.extract_titles(preprocessed_line)
-        if len(potential_movies) == 0: 
-            return "Sorry, I don't understand. Try putting movies in quotes." 
-        
-        # If there is no result for a movie check other spellings or titles
-        # If the bot didn't find any movies ask for another one
-        
-        movie_ids = self.find_movies_by_title(potential_movies[0])
-        
-        if len(movie_ids) == 0: 
-            user_movie = potential_movies[0]
-            notRobot = ["Hm, I haven't seen that movie. Tell me about another one.", 
-                            "Haven't heard of {} try another movie".format(user_movie)]
-            if self.creative:
-                notRobot = ["Hm, I haven't seen that movie. Tell me about another one.", 
-                            "Haven't heard of {} try another movie".format(user_movie), 
-                            "Ooooooo I love that movie!....sike, talk about another one",
-                            "I bet {} would be great to talk about but can you tell me about a different one?".format(user_movie)]
-            return random.choice(notRobot)
-        # If we find a movie, we explicitly confirm the movie
-        elif len(movie_ids) > 1:
-            return self.clarifyTitle(potential_movies[0], movie_ids)
-        else:
-            movie_id = movie_ids[0]
+            print("self.mode == clarifyTitle")
+            return self.clarifyTitle(preprocessed_line, None)
+        if self.mode == "newMovie":
+            print("self.mode == newMovie")
             sentiment = self.extract_sentiment(preprocessed_line)
-            self.archive = (movie_id, sentiment)
-            if sentiment == 0:
+            self.archive = (self.archive[0], sentiment)
+            potential_movies = self.extract_titles(preprocessed_line)
+            # check if user put at least 1 movie in quotes
+            if len(potential_movies) == 0: 
+                return "Sorry, I don't understand. Try putting movies in quotes." 
+            return self.processUserTitle(potential_movies[0])
+        if self.mode == "confirmArchive":
+            print("self.mode == confirmArchive")
+            print("here")
+            if self.archive[1] == 0:
+                self.go_back_mode = "confirmArchive"
                 return self.clarifySentiment("")
-            
+            movie_id, sentiment = self.archive
             sentiment_in_english = "really liked" if sentiment == 1 else "weren't a big fan of"
-            self.archive = (movie_id, sentiment)
-            self.go_back_mode = "ask"
+            self.go_back_mode = "predict"
+            self.certain = True
             return self.confirmResponse("Ok, sounds to me like you {} {}, that right?".format(sentiment_in_english, self.titles[movie_id][0]))
+        self.certain = False
+        self.mode = "newMovie"
+        return "Uh... Lets talk about a new movie please"
     
-            # # TODO : Handle Multiple Movie Options
-            # response = "You said {}. Thank you! Tell me about another movie you have seen.".format(movie_options[0])
-            # return response
-
 
         ########################################################################
         #                          END OF YOUR CODE                            #
@@ -690,12 +737,23 @@ class Chatbot:
         # Check if the clarification is just a number and represent the order in the list of candidates
         if clarification.isnumeric() and len(candidates) >= int(clarification) and int(clarification) != 0:
             return [candidates[int(clarification) - 1]]
+        candlen = len(candidates)
+        if clarification == 'most recent' and candlen >= 1: return [candidates[0]]
+
+        places = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eight", "ninth","tenth"]
+        for i, place in enumerate(places):
+            if place in clarification and candlen >= i + 1: 
+                print(place)
+                return [candidates[i]]
         
-        if clarification == 'most recent': return [candidates[0]]
-        if "first one" in clarification: return [candidates[0]]
-        if "second one" in clarification: return [candidates[1]]
-        if "third one" in clarification: return [candidates[2]]
-        if "fourth one" in clarification: return [candidates[3]]
+        # if "second" in clarification: return [candidates[1]]
+        # if "third" in clarification: return [candidates[2]]
+        # if "fourth" in clarification: return [candidates[3]]
+        # if "fifth" in clarification: return [candidates[4]]
+        # if "sixth" in clarification: return [candidates[5]]
+        # if "seventh" in clarification: return [candidates[6]]
+        # if "eigth" in clarification: return [candidates[7]]
+        # if "ninth" in clarification: return [candidates[8]]
         
         for movie_idx in candidates:
             title, genre = self.titles[movie_idx]
@@ -724,7 +782,10 @@ class Chatbot:
                         highest_common_words = common_words
                         best_canadiate = movie_option_index
             if best_canadiate != None: options.append(best_canadiate) 
-        return options
+        print("clarification: {}".format(clarification))
+        print("candidates: {}".format(candidates))
+        print("new candidates: {}".format(options))
+        return options if len(options) > 0 else candidates
 
     ############################################################################
     # 3. Movie Recommendation helper functions                                 #
