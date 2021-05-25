@@ -34,8 +34,6 @@ David: Completed most of the creative functionality as well as debugging of star
 #########################################################################################
 # Ethics Question                                                                  #
 #########################################################################################
-TODO: Please answer the following question:
-
 Humans are quick to anthropomorphize chatbots, like ELIZA. 
 In the 1960’s, users’ trust in ELIZA raised numerous concerns that humans would believe the system’s advice, 
 even if ELIZA did not actually know what it was talking about. Newer chatbots are built using neural networks, 
