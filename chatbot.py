@@ -490,9 +490,10 @@ class Chatbot:
                         second = re.findall(alt_pattern, altTitle)[0][1]
                         altTitle = second + first
                         clean_alt_title  = altTitle.replace('a.k.a. ', "").lower().replace(" ", "")
+                        self.alternate_titles[clean_alt_title] = i
                     except:
                         # print("error", altTitle, match)
-                        self.alternate_titles[clean_alt_title] = i
+                        pass
             # if title doesnt match regular expression, theres something really weird going on
             else:
                 titles[titlefromlist].append([i, None, genre, None, None])
@@ -584,31 +585,34 @@ class Chatbot:
                 matches.append(i_index)
             elif year.replace(' ', '') in i_year:
                 matches.append(i_index)
-                #print(matches)
+                
         # Creative : Check if they used an alternative name
         # EDGE CASE: What if results aren't empty but they used a alt name?
-        if len(results) == 0:
-            try:
-                movie_index = self.alternate_titles[u_title]
-                matches.append(movie_index)
-            except:
-                pass
-            # Creative Disambiguation (Part 1) Returns all movies containing the tokens in title
-            if self.creative:
-                for token_index, token in enumerate(u_title.split()):
-                    preprocessed_token = token.lower()
-                    try:
+        #if len(results) == 0:
+        alternative_matches = []
+        try:
+            movie_index = self.alternate_titles[u_title]
+            alternative_matches.append(movie_index)
+        except: 
+            pass
+            
+        # Creative Disambiguation (Part 1) Returns all movies containing the tokens in title
+        if self.creative and len(alternative_matches) == 0:
+            for token_index, token in enumerate(title.split()):
+                preprocessed_token = token.lower()
+                try:
                         #Check the intersection of the keywords if there are multiple words
                         #if the code got something from the previous code it should add
-                        if token_index == 0:
-                            matches += self.disamb_title[preprocessed_token]
-                        else:
-                            token_movies = self.disamb_title[preprocessed_token]
-                            common_movies = set(matches).intersection(set(token_movies))
-                            matches = list(common_movies)
-                    except:
-                        pass
-                
+                    if token_index == 0:
+                        matches += self.disamb_title[preprocessed_token]
+                    else:
+                        token_movies = self.disamb_title[preprocessed_token]
+                        common_movies = set(matches).intersection(set(token_movies))
+                        matches = list(common_movies)
+                except:
+                    pass
+        # Add the alternative matches we found :D
+        matches += alternative_matches     
         # Removes duplicates
         matches = list(set(matches))
         return matches

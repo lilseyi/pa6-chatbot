@@ -45,12 +45,6 @@ that they were written by a human.
 What are some possible ramifications of anthropomorphizing chatbot systems? Can you think of any ways that 
 engineers could ensure that users can easily distinguish the chatbot responses from those of a human?
 
-
-
-#########################################################################################
-# Optional: Feel free to include anything else that you want us to know about your      #
-# implementation!                                                                       #
-#########################################################################################
 It can be dangerous if a chatbot trained on actual human data interacts with humans without it being known.
 The emotional impact from something offensive said can be mitigated if it is clear a robot is being talked to
 engineers can try de-humanizing these chatbots, which may seem counter-intuitive but as
@@ -58,3 +52,8 @@ long as the bot communicates what it needs to, it does not matter whether it sou
 And in fact I think we should keep them sounding as robotic as possible when necessary
 so users don't get attached to a machine and get offended when a catastrophic mistake is made
 by that machine.
+
+#########################################################################################
+# Optional: Feel free to include anything else that you want us to know about your      #
+# implementation!                                                                       #
+#########################################################################################
