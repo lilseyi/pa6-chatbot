@@ -23,6 +23,7 @@ class Chatbot:
         self.certain = False # make sure this is true before moving on
         self.go_back_mode = "newMovie"
         self.archive = (None, None)
+        self.archiveList = []
         self.recommendations = None
         self.silentGame = 0
         self.titleOptionsToNarrow = None
@@ -123,6 +124,7 @@ class Chatbot:
             self.certain = False
             self.mode = "newMovie"
             self.archive = (None, None)
+            self.archiveList = []
             return "{} So tell me more about another movie you've seen".format(prefix)
 
         ########################################################################
@@ -139,10 +141,15 @@ class Chatbot:
             self.mode = "confirm"
             return prompt
         yorn = user_input.replace(" ","").replace(".","").replace("!","")
-        affirmitives = ["y","yeah","yes","mhm","yup","ye","yay"]
+        affirmitives = ["y","yeah","yes","mhm","yup","ye","yay","yea"]
         nonAffirmitives = ["n","nope","no","mm","nah","nada","nay"]
         if yorn in affirmitives:
-            if self.archive != None: self.userData.append(self.archive)
+            if self.archive != None: 
+                self.userData.append(self.archive)
+            if len(self.archiveList) > 0 : 
+                self.certain = True
+                for archive in self.archiveList:
+                    self.userData.append(archive)
             self.mode = self.go_back_mode
             return self.makePrediction("Ok cool!")
         elif yorn in nonAffirmitives:
@@ -225,6 +232,7 @@ class Chatbot:
         # TODO: Edit for creative                    #
         ########################################################################
         movie_ids = self.find_movies_by_title(user_input_title)
+        print(movie_ids)
         if len(movie_ids) == 0 and not self.creative: 
             notRobot = ["Hm, I haven't seen that movie. Tell me about another one.", 
                             "Haven't heard of {} try another movie".format(user_input_title)]
@@ -246,11 +254,40 @@ class Chatbot:
                             "Is {} right?".format(movie)]
                 self.go_back_mode = "confirmArchive"
                 return self.confirmResponse(random.choice(notRobot))
+        elif len(movie_ids) == 1:
+            self.mode = "confirmArchive"
+            self.archive = (movie_ids[0], self.archive[1])
+            return self.process("Nothing matters")
         elif len(movie_ids) > 1:
             return self.clarifyTitle(user_input_title, movie_ids)
 
         ########################################################################
 
+    def handleMultipleTitles(self, user_input):
+        """
+        get more than one sentiment at a time
+        """
+        senti = {-1: "don't like", 0: "are indifferent to", 1: "like"}
+        results = self.extract_sentiment_for_movies(user_input)
+        print(results)
+        for result in results:
+            title_indices = self.find_movies_by_title(result[0])
+            if(len(title_indices) < 1):
+                self.archiveList = []
+                self.archiveList = (None, None)
+                self.mode = "newMovie"
+                return "couldn't find one of those titles, lets try another movie"
+            self.archive = (title_indices[0],result[1])
+            self.archiveList.append((title_indices[0],result[1]))
+        print(self.archiveList)
+        prompt = "So you {} {}".format(senti[results[0][1]],results[0][0])
+        for i in range(1, len(result)):
+            prompt += " and {} {}".format(senti[results[i][1]],results[i][0])
+        prompt += ", is that correct?"
+        print(prompt)
+        self.go_back_mode = "newMovie"
+        return self.confirmResponse(prompt)
+        
     def handleEmpty(self, user_input):
         """
         this function is completely useless cuz they handle empty strings for you already
@@ -338,15 +375,23 @@ class Chatbot:
         if self.mode == "clarifyTitle":
             print("self.mode == clarifyTitle")
             return self.clarifyTitle(preprocessed_line, None)
+        if self.mode == "handleMultipleTitles":
+            print("self.mode == handleMultipleTitles")
+            return self.handleMultipleTitles(None)
         if self.mode == "newMovie":
             print("self.mode == newMovie")
             sentiment = self.extract_sentiment(preprocessed_line)
             self.archive = (self.archive[0], sentiment)
             potential_movies = self.extract_titles(preprocessed_line)
-            # check if user put at least 1 movie in quotes
+            # check if user put at least 1 movie in quotes 
             if len(potential_movies) == 0: 
                 return "Sorry, I don't understand. Try putting movies in quotes." 
-            return self.processUserTitle(potential_movies[0])
+            if len(potential_movies) == 1: 
+                return self.processUserTitle(potential_movies[0])
+            if len(potential_movies) > 1:
+                return self.handleMultipleTitles(preprocessed_line) 
+            
+
         if self.mode == "confirmArchive":
             print("self.mode == confirmArchive")
             print("here")
@@ -521,8 +566,9 @@ class Chatbot:
         for i_index, i_year, i_genre, i_article, i_altTitle in results:
             if year == "":
                 matches.append(i_index)
-            elif year == i_year:
+            elif year.replace(' ', '') in i_year:
                 matches.append(i_index)
+                print(matches)
         # Creative : Check if they used an alternative name
         # EDGE CASE: What if results aren't empty but they used a alt name?
         if len(results) == 0:
@@ -531,26 +577,24 @@ class Chatbot:
                 matches.append(movie_index)
             except:
                 pass
-        
-        # Creative Disambiguation (Part 1) Returns all movies containing the tokens in title
-        if self.creative:
-            for token_index, token in enumerate(title.split()):
-                preprocessed_token = token.lower()
-                try:
-                    #Check the intersection of the keywords if there are multiple words
-                    #if the code got something from the previous code it should add
-                    if token_index == 0:
-                        matches += self.disamb_title[preprocessed_token]
-                    else:
-                        token_movies = self.disamb_title[preprocessed_token]
-                        common_movies = set(matches).intersection(set(token_movies))
-                        matches = list(common_movies)
-                except:
-                    pass
+            # Creative Disambiguation (Part 1) Returns all movies containing the tokens in title
+            if self.creative:
+                for token_index, token in enumerate(u_title.split()):
+                    preprocessed_token = token.lower()
+                    try:
+                        #Check the intersection of the keywords if there are multiple words
+                        #if the code got something from the previous code it should add
+                        if token_index == 0:
+                            matches += self.disamb_title[preprocessed_token]
+                        else:
+                            token_movies = self.disamb_title[preprocessed_token]
+                            common_movies = set(matches).intersection(set(token_movies))
+                            matches = list(common_movies)
+                    except:
+                        pass
                 
         # Removes duplicates
         matches = list(set(matches))
-        #print(matches)
         return matches
 
     def extract_sentiment(self, preprocessed_input, returnFlip = False, startSentence = True):
